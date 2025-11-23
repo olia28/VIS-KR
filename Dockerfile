@@ -14,7 +14,7 @@ COPY package*.json bower.json .bowerrc* ./
 
 RUN npm install --unsafe-perm --ignore-scripts
 
-RUN bower install --allow-root
+RUN bower install --allow-root --force
 
 COPY . .
 
