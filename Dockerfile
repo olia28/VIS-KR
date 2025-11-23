@@ -4,7 +4,7 @@ WORKDIR /app
 RUN echo "deb http://archive.debian.org/debian stretch main" > /etc/apt/sources.list && \
     echo "deb http://archive.debian.org/debian-security stretch/updates main" >> /etc/apt/sources.list && \
     apt-get update -o Acquire::Check-Valid-Until=false && \
-    apt-get install -y git
+    apt-get install -y git build-essential nasm libpng-dev autoconf libtool automake make g++
 
 RUN git config --global url."https://".insteadOf git://
 
@@ -16,7 +16,7 @@ RUN sed -i 's/"bower install"/"echo skipping bower install"/' package.json
 
 RUN npm install --unsafe-perm
 
-RUN npm rebuild node-sass
+RUN npm rebuild
 
 RUN bower install --allow-root --force
 
