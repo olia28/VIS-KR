@@ -1,7 +1,10 @@
 FROM node:10-stretch as build
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y git
+RUN echo "deb http://archive.debian.org/debian stretch main" > /etc/apt/sources.list && \
+    echo "deb http://archive.debian.org/debian-security stretch/updates main" >> /etc/apt/sources.list && \
+    apt-get update -o Acquire::Check-Valid-Until=false && \
+    apt-get install -y git
 
 RUN npm install -g gulp-cli bower
 
