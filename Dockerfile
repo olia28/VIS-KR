@@ -16,9 +16,13 @@ RUN sed -i 's/"bower install"/"echo skipping bower install"/' package.json
 
 RUN npm install --unsafe-perm
 
+RUN npm rebuild node-sass
+
 RUN bower install --allow-root --force
 
 COPY . .
+
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 RUN gulp build
 
