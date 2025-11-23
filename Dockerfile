@@ -1,9 +1,9 @@
-FROM node:18-bullseye as build
+FROM node:16-bullseye as build
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install --force
+RUN npm install --legacy-peer-deps
 
 COPY . .
 
