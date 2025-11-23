@@ -12,9 +12,9 @@ RUN npm install -g gulp-cli bower
 
 COPY package*.json bower.json .bowerrc* ./
 
-RUN npm install --unsafe-perm --ignore-scripts
+RUN sed -i '/"install": "bower install"/d' package.json
 
-RUN npm rebuild node-sass
+RUN npm install --unsafe-perm
 
 RUN bower install --allow-root --force
 
