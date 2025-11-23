@@ -12,7 +12,7 @@ RUN npm install -g gulp-cli bower
 
 COPY package*.json bower.json .bowerrc* ./
 
-RUN sed -i '/"install": "bower install"/d' package.json
+RUN sed -i 's/"bower install"/"echo skipping bower install"/' package.json
 
 RUN npm install --unsafe-perm
 
