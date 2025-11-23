@@ -1,20 +1,21 @@
-FROM node:14-bullseye as build
+FROM node:10-stretch as build
 WORKDIR /app
 
-COPY package*.json ./
+RUN apt-get update && apt-get install -y git
 
-RUN npm install --legacy-peer-deps
+RUN npm install -g gulp-cli bower
 
-RUN npm install -g @angular/cli@13
+COPY package*.json bower.json .bowerrc* ./
+
+RUN npm install --unsafe-perm
 
 COPY . .
 
-ENV NODE_OPTIONS="--max-old-space-size=4096"
-
-RUN ng build --configuration production
+RUN gulp build
 
 FROM nginx:alpine
-COPY --from=build /app/dist/angular-material-dashboard /usr/share/nginx/html
+
+COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
