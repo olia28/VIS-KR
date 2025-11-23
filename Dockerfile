@@ -1,11 +1,13 @@
-FROM node:14 as build
+FROM node:18-bullseye as build
 WORKDIR /app
+
 COPY package*.json ./
 
-# Встановлюємо залежності
-RUN npm install --legacy-peer-deps
+RUN npm install --force
 
 COPY . .
+
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 RUN npm run build
 
