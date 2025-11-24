@@ -4,7 +4,7 @@ WORKDIR /app
 RUN echo "deb http://archive.debian.org/debian stretch main" > /etc/apt/sources.list && \
     echo "deb http://archive.debian.org/debian-security stretch/updates main" >> /etc/apt/sources.list && \
     apt-get update -o Acquire::Check-Valid-Until=false && \
-    apt-get install -y git build-essential python make g++ libpng-dev nasm autoconf libtool automake zlib1g-dev
+    apt-get install -y git build-essential python make g++ libpng-dev nasm autoconf libtool automake zlib1g-dev libjpeg62-turbo-dev libgif-dev optipng gifsicle
 
 RUN git config --global url."https://".insteadOf git://
 RUN npm install -g gulp-cli bower
@@ -16,6 +16,9 @@ RUN sed -i 's/"bower install"/"echo skipping bower install"/' package.json
 
 RUN npm install --unsafe-perm
 
+RUN npm install graceful-fs@4 --save-dev --unsafe-perm
+RUN npm uninstall gulp-sass node-sass
+RUN npm install node-sass@4.14.1 gulp-sass@4.0.2 --unsafe-perm
 RUN npm rebuild node-sass
 
 RUN bower install --allow-root --force
