@@ -1,38 +1,41 @@
-FROM node:10-stretch as build
+FROM node:10-alpine as build
 WORKDIR /app
 
-# 1. Налаштовуємо архіви Debian
-RUN echo "deb http://archive.debian.org/debian stretch main" > /etc/apt/sources.list && \
-    echo "deb http://archive.debian.org/debian-security stretch/updates main" >> /etc/apt/sources.list && \
-    apt-get update -o Acquire::Check-Valid-Until=false && \
-    apt-get install -y git build-essential python make g++ libpng-dev nasm autoconf libtool automake zlib1g-dev libjpeg62-turbo-dev libgif-dev optipng gifsicle
+# 1. Встановлюємо інструменти збірки для Alpine Linux
+# python, make, g++ потрібні для node-sass
+RUN apk add --no-cache git python make g++ bash
 
-# 2. Налаштовуємо Git
+# 2. Налаштування Git
 RUN git config --global url."https://".insteadOf git://
+
+# 3. Встановлюємо глобальні інструменти
 RUN npm install -g gulp-cli bower
 
 COPY . .
 
-# 3. Чистимо сміття
+# 4. Чистимо сміття
 RUN rm -rf node_modules package-lock.json
+# Ця команда для sed трохи відрізняється в Alpine, тому ми використовуємо простіший варіант
 RUN sed -i 's/"bower install"/"echo skipping bower install"/' package.json
 
-# 4. Встановлюємо залежності
+# 5. Встановлюємо залежності
+# --unsafe-perm критичний для Alpine
 RUN npm install --unsafe-perm
 
-# 5. Лагодимо Gulp та Sass
-RUN npm install graceful-fs@4 --save-dev --unsafe-perm
-RUN npm uninstall gulp-sass node-sass
-RUN npm install node-sass@4.14.1 gulp-sass@4.0.2 --unsafe-perm
+# 6. === КРИТИЧНИЙ КРОК ===
+# Ми примусово оновлюємо Sass на версію, яка гарантовано працює на Node 10 Alpine
+# І додаємо graceful-fs для Gulp
+RUN npm install graceful-fs@4 --save-dev --unsafe-perm && \
+    npm uninstall gulp-sass node-sass && \
+    npm install node-sass@4.14.1 gulp-sass@4.0.2 --unsafe-perm
 
-# 6. === ПОВНИЙ РЕБІЛД ===
-# Це збере всі бінарні файли (sass, optipng тощо) під цю систему
-RUN npm rebuild
+# 7. Ребілд для Alpine
+RUN npm rebuild node-sass
 
-# 7. Запускаємо Bower
+# 8. Bower
 RUN bower install --allow-root --force
 
-# 8. Запускаємо збірку
+# 9. Збірка
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN gulp build
 
