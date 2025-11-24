@@ -10,21 +10,19 @@ RUN git config --global url."https://".insteadOf git://
 
 RUN npm install -g gulp-cli bower
 
-COPY package*.json bower.json .bowerrc* ./
+COPY . .
+
+RUN rm -rf node_modules package-lock.json
 
 RUN sed -i 's/"bower install"/"echo skipping bower install"/' package.json
 
 RUN npm install --unsafe-perm
-
-RUN npm install graceful-fs@4 --save-dev --unsafe-perm
 
 RUN npm uninstall gulp-sass node-sass && \
     npm install node-sass@4.14.1 --unsafe-perm && \
     npm install gulp-sass@4.0.1 --unsafe-perm
 
 RUN bower install --allow-root --force
-
-COPY . .
 
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
