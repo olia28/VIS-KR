@@ -4,7 +4,7 @@ WORKDIR /app
 RUN echo "deb http://archive.debian.org/debian stretch main" > /etc/apt/sources.list && \
     echo "deb http://archive.debian.org/debian-security stretch/updates main" >> /etc/apt/sources.list && \
     apt-get update -o Acquire::Check-Valid-Until=false && \
-    apt-get install -y git build-essential python make g++ libpng-dev nasm autoconf libtool automake
+    apt-get install -y git build-essential python make g++ libpng-dev nasm autoconf libtool automake zlib1g-dev
 
 RUN git config --global url."https://".insteadOf git://
 RUN npm install -g gulp-cli bower
