@@ -4,7 +4,7 @@ WORKDIR /app
 RUN echo "deb http://archive.debian.org/debian stretch main" > /etc/apt/sources.list && \
     echo "deb http://archive.debian.org/debian-security stretch/updates main" >> /etc/apt/sources.list && \
     apt-get update -o Acquire::Check-Valid-Until=false && \
-    apt-get install -y git build-essential python make g++
+    apt-get install -y git build-essential python make g++ libsass-dev
 
 RUN git config --global url."https://".insteadOf git://
 
@@ -16,11 +16,14 @@ RUN rm -rf node_modules package-lock.json
 
 RUN sed -i 's/"bower install"/"echo skipping bower install"/' package.json
 
-RUN npm install --unsafe-perm
+RUN npm install --unsafe-perm --ignore-scripts
 
 RUN npm uninstall gulp-sass node-sass && \
     npm install node-sass@4.14.1 --unsafe-perm && \
-    npm install gulp-sass@4.0.1 --unsafe-perm
+    npm install gulp-sass@4.0.2 --unsafe-perm && \
+    npm install graceful-fs@4 --save-dev
+
+RUN npm rebuild node-sass
 
 RUN bower install --allow-root --force
 
