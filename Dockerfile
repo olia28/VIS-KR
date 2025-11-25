@@ -1,19 +1,15 @@
 # --- Етап 1: Збірка (Node 10 - Buster) ---
-# Buster - це стабільна версія Debian 10, яка ідеально підходить для Node 10.
 FROM node:10-buster AS build
 
 WORKDIR /app
 
-# 1. Фікс репозиторіїв Debian (Buster Archive)
-# Оскільки Debian Buster теж в архіві, ми прописуємо правильні шляхи.
+# 1. Фікс репозиторіїв Debian
 RUN echo "deb http://archive.debian.org/debian/ buster main" > /etc/apt/sources.list && \
     echo "deb http://archive.debian.org/debian-security/ buster/updates main" >> /etc/apt/sources.list && \
     apt-get -o Acquire::Check-Valid-Until=false update
 
-# 2. Системні бібліотеки
-# На Node 10 Buster ці бібліотеки встановлюються без проблем.
-RUN apt-get install -y git python make g++ \
-    libpng-dev libjpeg-dev nasm autoconf libtool automake
+# 2. Системні бібліотеки (мінімальний набір)
+RUN apt-get install -y git python make g++
 
 # 3. Git config
 RUN git config --global url."https://".insteadOf git://
@@ -30,39 +26,39 @@ RUN rm -f package-lock.json
 # 7. Встановлюємо залежності
 RUN npm install --unsafe-perm --ignore-scripts
 
-# 8. SASS FIX
-# 4.14.1 - остання версія, яка підтримує Node 10 і не падає.
+# 8. === ГОЛОВНА ЗМІНА: ПЕРЕХІД НА DART SASS ===
+# Ми видаляємо node-sass (C++), який постійно падає.
+# Ми ставимо sass (JS), який стабільний як скеля.
+# gulp-sass версії 4.1.0 вміє працювати з новим sass.
 RUN npm uninstall gulp-sass node-sass --unsafe-perm && \
-    npm install node-sass@4.14.1 gulp-sass@4.0.2 --save-dev --unsafe-perm
+    npm install gulp-sass@4.1.0 sass --save-dev --unsafe-perm
 
-# 9. Ребілд
-RUN npm rebuild --unsafe-perm
-
-# 10. Gulp 3 Fix (graceful-fs)
-# Навіть на Node 10 краще мати оновлений fs, щоб не було сюрпризів.
+# 9. Gulp 3 Fix
 RUN npm install graceful-fs@4 --save-dev --save-exact
 
-# 11. Bower Fix
+# 10. Bower Fix
 RUN sed -i 's/"dependencies": {/"resolutions": { "angular": "1.7.5" }, "dependencies": {/' bower.json
 
-# 12. Bower Install
+# 11. Bower Install
 RUN bower install --allow-root --force
 
-# 13. Копіюємо весь код
+# 12. Копіюємо весь код
 COPY . .
 
 # =================================================================
-# 14. === ПОВНЕ СПРОЩЕННЯ GULP (NO CRASH MODE) ===
-# Ми використовуємо Node 10 (сумісну з Gulp 3), 
-# АЛЕ з "легкими" файлами збірки (щоб не було Segfault).
+# 13. === ОНОВЛЕННЯ КОНФІГІВ GULP ===
 # =================================================================
 
-# --- 1. gulp/styles.js (Тільки Sass) ---
+# --- 1. gulp/styles.js (Використовуємо JS компілятор) ---
 RUN cat <<'EOF' > gulp/styles.js
 'use strict';
 var gulp = require('gulp');
 var paths = gulp.paths;
 var $ = require('gulp-load-plugins')();
+
+// ПІДКЛЮЧАЄМО DART SASS (JAVASCRIPT)
+var sass = require('gulp-sass');
+sass.compiler = require('sass');
 
 gulp.task('styles', function () {
   var sassOptions = { style: 'expanded' };
@@ -92,11 +88,7 @@ gulp.task('styles', function () {
   ])
     .pipe(indexFilter)
     .pipe($.inject(injectFiles, injectOptions))
-    .pipe($.sass(sassOptions)) 
-    .on('error', function handleError(err) {
-      console.error(err.toString());
-      this.emit('end');
-    })
+    .pipe(sass(sassOptions).on('error', sass.logError)) 
     .pipe(gulp.dest(paths.tmp + '/serve/app/'));
 });
 EOF
@@ -203,7 +195,7 @@ gulp.task('clean', function (done) {
 gulp.task('build', ['html', 'images', 'fonts', 'misc']);
 EOF
 
-# 15. Запускаємо збірку
+# 14. Запускаємо збірку
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN gulp build --verbose
 
