@@ -8,7 +8,7 @@ RUN echo "deb http://archive.debian.org/debian/ buster main" > /etc/apt/sources.
     echo "deb http://archive.debian.org/debian-security/ buster/updates main" >> /etc/apt/sources.list && \
     apt-get -o Acquire::Check-Valid-Until=false update
 
-# 2. Системні бібліотеки (мінімальний набір)
+# 2. Системні бібліотеки
 RUN apt-get install -y git python make g++
 
 # 3. Git config
@@ -26,12 +26,11 @@ RUN rm -f package-lock.json
 # 7. Встановлюємо залежності
 RUN npm install --unsafe-perm --ignore-scripts
 
-# 8. === ГОЛОВНА ЗМІНА: ПЕРЕХІД НА DART SASS ===
-# Ми видаляємо node-sass (C++), який постійно падає.
-# Ми ставимо sass (JS), який стабільний як скеля.
-# gulp-sass версії 4.1.0 вміє працювати з новим sass.
+# 8. === SASS FIX (DART SASS LEGACY) ===
+# Ми ставимо sass версії 1.32.13. 
+# Це остання версія, яка гарантовано працює на старому Node 10.
 RUN npm uninstall gulp-sass node-sass --unsafe-perm && \
-    npm install gulp-sass@4.1.0 sass --save-dev --unsafe-perm
+    npm install gulp-sass@4.1.0 sass@1.32.13 --save-dev --unsafe-perm
 
 # 9. Gulp 3 Fix
 RUN npm install graceful-fs@4 --save-dev --save-exact
@@ -46,17 +45,17 @@ RUN bower install --allow-root --force
 COPY . .
 
 # =================================================================
-# 13. === ОНОВЛЕННЯ КОНФІГІВ GULP ===
+# 13. === ПЕРЕЗАПИС ФАЙЛІВ ЗБІРКИ ===
 # =================================================================
 
-# --- 1. gulp/styles.js (Використовуємо JS компілятор) ---
+# --- 1. gulp/styles.js (Dart Sass) ---
 RUN cat <<'EOF' > gulp/styles.js
 'use strict';
 var gulp = require('gulp');
 var paths = gulp.paths;
 var $ = require('gulp-load-plugins')();
 
-// ПІДКЛЮЧАЄМО DART SASS (JAVASCRIPT)
+// ПІДКЛЮЧАЄМО DART SASS
 var sass = require('gulp-sass');
 sass.compiler = require('sass');
 
