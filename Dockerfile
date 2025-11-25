@@ -3,51 +3,55 @@ FROM node:10 AS build
 
 WORKDIR /app
 
-# 1. Фікс репозиторіїв Debian (щоб працював apt-get)
+# 1. Фікс репозиторіїв Debian (архівні джерела)
 RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
     sed -i 's|security.debian.org|archive.debian.org/|g' /etc/apt/sources.list && \
     sed -i '/stretch-updates/d' /etc/apt/sources.list && \
     apt-get -o Acquire::Check-Valid-Until=false update
 
-# 2. Системні інструменти (потрібні для збірки Sass)
+# 2. Встановлюємо Python та компілятори (критично для node-sass)
 RUN apt-get install -y git python make g++
 
-# 3. Налаштування Git
+# 3. Фікс для GitHub протоколу
 RUN git config --global url."https://".insteadOf git://
 
 # 4. Глобальні інструменти
 RUN npm install -g gulp-cli bower
 
-# 5. Копіюємо тільки файли залежностей
+# 5. Копіюємо конфіги
 COPY package*.json bower.json* .bowerrc* ./
 
-# 6. Видаляємо package-lock.json (він часто створює проблеми в старих проектах)
+# 6. Видаляємо старий lock-файл
 RUN rm -f package-lock.json
 
-# 7. Встановлюємо залежності, ігноруючи скрипти (щоб не запускався bower завчасно)
+# 7. Встановлюємо залежності (ігноруємо скрипти, щоб не падав bower)
 RUN npm install --unsafe-perm --ignore-scripts
 
-# 8. === ГОЛОВНИЙ ФІКС ===
-# Ми примусово встановлюємо node-sass версії 4.14.1.
-# Це єдина версія, яка стабільно працює на Node 10 і не "падає" мовчки.
-RUN npm install node-sass@4.14.1 --save-dev --unsafe-perm
+# ===================================================================
+# 8. === ХІРУРГІЧНЕ ВТРУЧАННЯ (Вирішення проблеми Sass) ===
+# Старий gulp-sass (ver 3.x) тягне поламаний node-sass.
+# Ми видаляємо їх і ставимо "Золоту пару", яка працює на Node 10:
+# node-sass версії 4.14.1 + gulp-sass версії 4.0.2
+# ===================================================================
+RUN npm uninstall gulp-sass node-sass --unsafe-perm && \
+    npm install node-sass@4.14.1 gulp-sass@4.0.2 --save-dev --unsafe-perm
 
-# 9. Перезбираємо node-sass під Linux середовище
+# 9. Примусова перекомпіляція Sass під Linux
 RUN npm rebuild node-sass
 
 # 10. Лікуємо Gulp 3 (graceful-fs)
 RUN npm install graceful-fs@4 --save-dev --save-exact
 
-# 11. Копіюємо ВЕСЬ проект (Тільки зараз, щоб не перезаписати node_modules)
-COPY . .
+# 11. Фікс Bower (Resolutions) - щоб Angular не сварився на версії
+RUN sed -i 's/"dependencies": {/"resolutions": { "angular": "1.7.5" }, "dependencies": {/' bower.json
 
-# 12. Фікс конфлікту версій для Bower (Angular 1.8.3)
-RUN sed -i 's/"dependencies": {/"resolutions": { "angular": "1.8.3" }, "dependencies": {/' bower.json
-
-# 13. Запускаємо Bower (тепер, коли всі файли на місці)
+# 12. Тепер запускаємо Bower
 RUN bower install --allow-root --force
 
-# 14. Збірка
+# 13. Копіюємо решту файлів
+COPY . .
+
+# 14. Запускаємо збірку
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN gulp build
 
