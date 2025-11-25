@@ -1,67 +1,40 @@
-# --- Етап 1: Збірка (Node 10 - Buster) ---
-FROM node:10-buster AS build
+# Використовуємо стабільну Node 14 (Bullseye)
+FROM node:14-bullseye AS build
 
 WORKDIR /app
 
-# 1. Фікс репозиторіїв Debian
-RUN echo "deb http://archive.debian.org/debian/ buster main" > /etc/apt/sources.list && \
-    echo "deb http://archive.debian.org/debian-security/ buster/updates main" >> /etc/apt/sources.list && \
-    apt-get -o Acquire::Check-Valid-Until=false update
+# 1. Системні інструменти
+RUN apt-get update && apt-get install -y git python3 make g++
 
-# 2. Системні бібліотеки
-RUN apt-get install -y git python make g++
-
-# 3. Git config
-RUN git config --global url."https://".insteadOf git://
-
-# 4. Глобальні інструменти
+# 2. Глобальні інструменти
 RUN npm install -g gulp-cli bower
 
-# 5. Копіюємо конфіги
-COPY package*.json bower.json* .bowerrc* ./
+# 3. Копіюємо package.json (який ви щойно оновили)
+COPY package*.json ./
 
-# 6. Видаляємо сміття
-RUN rm -f package-lock.json
+# 4. Встановлюємо залежності
+# legacy-peer-deps допомагає старим пакетам дружити з Node 14
+RUN npm install --legacy-peer-deps
 
-# 7. Встановлюємо залежності
-RUN npm install --unsafe-perm --ignore-scripts
-
-# 8. === SASS FIX (DART SASS LEGACY) ===
-# Ми ставимо sass версії 1.32.13. 
-# Це остання версія, яка гарантовано працює на старому Node 10.
-RUN npm uninstall gulp-sass node-sass --unsafe-perm && \
-    npm install gulp-sass@4.1.0 sass@1.32.13 --save-dev --unsafe-perm
-
-# 9. Gulp 3 Fix
-RUN npm install graceful-fs@4 --save-dev --save-exact
-
-# 10. Bower Fix
-RUN sed -i 's/"dependencies": {/"resolutions": { "angular": "1.7.5" }, "dependencies": {/' bower.json
-
-# 11. Bower Install
-RUN bower install --allow-root --force
-
-# 12. Копіюємо весь код
+# 5. Копіюємо решту файлів
 COPY . .
 
-# =================================================================
-# 13. === ПЕРЕЗАПИС ФАЙЛІВ ЗБІРКИ ===
-# =================================================================
+# 6. === ПЕРЕЗАПИСУЄМО ФАЙЛИ ЗБІРКИ ===
+# Оскільки ми змінили бібліотеки, нам треба трохи підправити код Gulp,
+# щоб він не шукав старі інструменти.
+# ====================================
 
-# --- 1. gulp/styles.js (Dart Sass) ---
+# Оновлюємо стилі під новий Sass
 RUN cat <<'EOF' > gulp/styles.js
 'use strict';
 var gulp = require('gulp');
 var paths = gulp.paths;
 var $ = require('gulp-load-plugins')();
-
-// ПІДКЛЮЧАЄМО DART SASS
 var sass = require('gulp-sass');
 sass.compiler = require('sass');
 
 gulp.task('styles', function () {
   var sassOptions = { style: 'expanded' };
-
   var injectFiles = gulp.src([
     paths.src + '/{app,components}/**/*.scss',
     '!' + paths.src + '/app/index.scss',
@@ -79,20 +52,18 @@ gulp.task('styles', function () {
     addRootSlash: false
   };
 
-  var indexFilter = $.filter('index.scss');
-
   return gulp.src([
     paths.src + '/app/index.scss',
     paths.src + '/app/vendor.scss'
   ])
-    .pipe(indexFilter)
+    .pipe($.filter('index.scss'))
     .pipe($.inject(injectFiles, injectOptions))
-    .pipe(sass(sassOptions).on('error', sass.logError)) 
+    .pipe(sass(sassOptions).on('error', sass.logError))
     .pipe(gulp.dest(paths.tmp + '/serve/app/'));
 });
 EOF
 
-# --- 2. gulp/inject.js (Без сортування) ---
+# Оновлюємо Inject (прибираємо сортування)
 RUN cat <<'EOF' > gulp/inject.js
 'use strict';
 var gulp = require('gulp');
@@ -117,10 +88,7 @@ gulp.task('inject', ['styles'], function () {
     addRootSlash: false
   };
 
-  var wiredepOptions = {
-    directory: 'bower_components',
-    exclude: [/bootstrap\.css/, /foundation\.css/]
-  };
+  var wiredepOptions = { directory: 'bower_components' };
 
   return gulp.src(paths.src + '/*.html')
     .pipe($.inject(injectStyles, injectOptions))
@@ -130,13 +98,13 @@ gulp.task('inject', ['styles'], function () {
 });
 EOF
 
-# --- 3. gulp/build.js (Без мініфікації) ---
+# Оновлюємо Build (прибираємо мініфікацію)
 RUN cat <<'EOF' > gulp/build.js
 'use strict';
 var gulp = require('gulp');
 var paths = gulp.paths;
 var $ = require('gulp-load-plugins')({
-  pattern: ['gulp-*', 'main-bower-files', 'uglify-save-license', 'del']
+  pattern: ['gulp-*', 'main-bower-files', 'del']
 });
 
 gulp.task('partials', function () {
@@ -144,7 +112,6 @@ gulp.task('partials', function () {
     paths.src + '/{app,components}/**/*.html',
     paths.tmp + '/{app,components}/**/*.html'
   ])
-    .pipe($.minifyHtml({ empty: true, spare: true, quotes: true }))
     .pipe($.angularTemplatecache('templateCacheHtml.js', {
       module: 'angularMaterialAdmin'
     }))
@@ -166,8 +133,7 @@ gulp.task('html', ['inject', 'partials'], function () {
     .pipe(assets = $.useref.assets())
     .pipe(assets.restore())
     .pipe($.useref())
-    .pipe(gulp.dest(paths.dist + '/'))
-    .pipe($.size({ title: paths.dist + '/', showFiles: true }));
+    .pipe(gulp.dest(paths.dist + '/'));
 });
 
 gulp.task('images', function () {
@@ -178,7 +144,6 @@ gulp.task('images', function () {
 gulp.task('fonts', function () {
   return gulp.src($.mainBowerFiles())
     .pipe($.filter('**/*.{eot,svg,ttf,woff}'))
-    .pipe($.flatten())
     .pipe(gulp.dest(paths.dist + '/fonts/'));
 });
 
@@ -194,11 +159,12 @@ gulp.task('clean', function (done) {
 gulp.task('build', ['html', 'images', 'fonts', 'misc']);
 EOF
 
-# 14. Запускаємо збірку
+# 7. Встановлюємо Bower і збираємо
+RUN bower install --allow-root --force
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN gulp build --verbose
 
-# --- Етап 2: NGINX ---
+# Етап 2: NGINX
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
