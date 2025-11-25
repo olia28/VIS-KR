@@ -1,48 +1,35 @@
-# Використовуємо Node 10 на базі Debian Buster (стабільніша версія)
-FROM node:10-buster as build
+# --- Етап 1: Збірка (Build Stage) ---
+FROM node:14-bullseye AS build
+
 WORKDIR /app
 
-# 1. Налаштовуємо архіви для Debian Buster (він переміщений в архів)
-# Це виправить помилки "404 Not Found" при встановленні програм
-RUN echo "deb http://archive.debian.org/debian buster main" > /etc/apt/sources.list && \
-    echo "deb http://archive.debian.org/debian-security buster/updates main" >> /etc/apt/sources.list && \
-    apt-get update -o Acquire::Check-Valid-Until=false && \
-    apt-get install -y git build-essential python make g++ libpng-dev nasm autoconf libtool automake zlib1g-dev
+# Встановлюємо системні залежності для node-sass та старих збірок
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
-# 2. Налаштовуємо Git (HTTPS замість GIT)
-RUN git config --global url."https://".insteadOf git://
+# Встановлюємо Gulp глобально
+RUN npm install -g gulp-cli
 
-# 3. Встановлюємо Gulp та Bower
-RUN npm install -g gulp-cli bower
+# Копіюємо файли package.json
+COPY package*.json ./
 
+# Встановлюємо залежності з прапорцем legacy-peer-deps для сумісності
+RUN npm install --legacy-peer-deps
+
+# Копіюємо весь проект
 COPY . .
 
-# 4. Чистимо сміття
-RUN rm -rf node_modules package-lock.json
-RUN sed -i 's/"bower install"/"echo skipping bower install"/' package.json
-
-# 5. Встановлюємо залежності
-RUN npm install --unsafe-perm
-
-# 6. === РЕМОНТ SASS ===
-# Видаляємо стару версію і ставимо сумісну з Node 10
-RUN npm uninstall gulp-sass node-sass && \
-    npm install node-sass@4.14.1 gulp-sass@4.0.2 --unsafe-perm && \
-    npm install graceful-fs@4 --save-dev --unsafe-perm
-
-# 7. Перезбираємо Sass під цю систему
-RUN npm rebuild node-sass
-
-# 8. Запускаємо Bower
-RUN bower install --allow-root --force
-
-# 9. Збірка
+# Збільшуємо ліміт пам'яті Node.js
 ENV NODE_OPTIONS="--max-old-space-size=4096"
+
+# Запускаємо збірку
 RUN gulp build
 
-# Етап 2: NGINX
+# --- Етап 2: Сервер (NGINX) ---
 FROM nginx:alpine
+
+# Копіюємо результат збірки (папка dist) в Nginx
 COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+
 EXPOSE 80
+
 CMD ["nginx", "-g", "daemon off;"]
