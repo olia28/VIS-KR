@@ -1,55 +1,63 @@
-# --- Етап 1: Збірка (Node 14 - Bullseye) ---
-# Ми беремо новішу версію Node, яка не падає з помилкою пам'яті.
-FROM node:14-bullseye AS build
+# --- Етап 1: Збірка (Node 10 - Buster) ---
+# Buster - це стабільна версія Debian 10, яка ідеально підходить для Node 10.
+FROM node:10-buster AS build
 
 WORKDIR /app
 
-# 1. Встановлюємо інструменти.
-# Цього разу без зайвих бібліотек (libgifsicle), які викликали помилки.
-# Тільки те, що треба для node-sass.
-RUN apt-get update && apt-get install -y git python3 make g++
+# 1. Фікс репозиторіїв Debian (Buster Archive)
+# Оскільки Debian Buster теж в архіві, ми прописуємо правильні шляхи.
+RUN echo "deb http://archive.debian.org/debian/ buster main" > /etc/apt/sources.list && \
+    echo "deb http://archive.debian.org/debian-security/ buster/updates main" >> /etc/apt/sources.list && \
+    apt-get -o Acquire::Check-Valid-Until=false update
 
-# 2. Налаштування Git
+# 2. Системні бібліотеки
+# На Node 10 Buster ці бібліотеки встановлюються без проблем.
+RUN apt-get install -y git python make g++ \
+    libpng-dev libjpeg-dev nasm autoconf libtool automake
+
+# 3. Git config
 RUN git config --global url."https://".insteadOf git://
 
-# 3. Глобальні інструменти
+# 4. Глобальні інструменти
 RUN npm install -g gulp-cli bower
 
-# 4. Копіюємо конфіги
+# 5. Копіюємо конфіги
 COPY package*.json bower.json* .bowerrc* ./
 
-# 5. === ПАТЧ ДЛЯ GULP 3 НА NODE 14 ===
-# Gulp 3 не любить Node 14. Ми його "обманюємо", створюючи цей файл.
-# Це вирішує проблему "ReferenceError: primordials is not defined".
-RUN echo '{ "dependencies": { "graceful-fs": { "version": "4.2.11" } } }' > npm-shrinkwrap.json
+# 6. Видаляємо сміття
+RUN rm -f package-lock.json
 
-# 6. Встановлюємо залежності
+# 7. Встановлюємо залежності
 RUN npm install --unsafe-perm --ignore-scripts
 
-# 7. SASS FIX
-# Ставимо версію, яка сумісна з Node 14
+# 8. SASS FIX
+# 4.14.1 - остання версія, яка підтримує Node 10 і не падає.
 RUN npm uninstall gulp-sass node-sass --unsafe-perm && \
     npm install node-sass@4.14.1 gulp-sass@4.0.2 --save-dev --unsafe-perm
 
-# 8. Ребілд (критично для Node 14)
+# 9. Ребілд
 RUN npm rebuild --unsafe-perm
 
-# 9. Bower Fix
+# 10. Gulp 3 Fix (graceful-fs)
+# Навіть на Node 10 краще мати оновлений fs, щоб не було сюрпризів.
+RUN npm install graceful-fs@4 --save-dev --save-exact
+
+# 11. Bower Fix
 RUN sed -i 's/"dependencies": {/"resolutions": { "angular": "1.7.5" }, "dependencies": {/' bower.json
 
-# 10. Bower Install
+# 12. Bower Install
 RUN bower install --allow-root --force
 
-# 11. Копіюємо весь код
+# 13. Копіюємо весь код
 COPY . .
 
 # =================================================================
-# 12. === СПРОЩЕННЯ ФАЙЛІВ ЗБІРКИ ===
-# Ми перезаписуємо файли Gulp "безпечними" версіями.
-# Це прибирає Uglify, CSSO і сортування, які викликають збої.
+# 14. === ПОВНЕ СПРОЩЕННЯ GULP (NO CRASH MODE) ===
+# Ми використовуємо Node 10 (сумісну з Gulp 3), 
+# АЛЕ з "легкими" файлами збірки (щоб не було Segfault).
 # =================================================================
 
-# --- 1. gulp/styles.js (Sass без наворотів) ---
+# --- 1. gulp/styles.js (Тільки Sass) ---
 RUN cat <<'EOF' > gulp/styles.js
 'use strict';
 var gulp = require('gulp');
@@ -84,7 +92,7 @@ gulp.task('styles', function () {
   ])
     .pipe(indexFilter)
     .pipe($.inject(injectFiles, injectOptions))
-    .pipe($.sass(sassOptions))
+    .pipe($.sass(sassOptions)) 
     .on('error', function handleError(err) {
       console.error(err.toString());
       this.emit('end');
@@ -131,7 +139,7 @@ gulp.task('inject', ['styles'], function () {
 });
 EOF
 
-# --- 3. gulp/build.js (Тільки склеювання) ---
+# --- 3. gulp/build.js (Без мініфікації) ---
 RUN cat <<'EOF' > gulp/build.js
 'use strict';
 var gulp = require('gulp');
@@ -195,7 +203,7 @@ gulp.task('clean', function (done) {
 gulp.task('build', ['html', 'images', 'fonts', 'misc']);
 EOF
 
-# 13. Запускаємо збірку
+# 15. Запускаємо збірку
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN gulp build --verbose
 
