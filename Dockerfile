@@ -1,59 +1,55 @@
-# --- Етап 1: Збірка (Node 10) ---
-FROM node:10 AS build
+# --- Етап 1: Збірка (Node 14 - Bullseye) ---
+# Ми беремо новішу версію Node, яка не падає з помилкою пам'яті.
+FROM node:14-bullseye AS build
 
 WORKDIR /app
 
-# 1. Фікс репозиторіїв Debian (Архів)
-RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
-    sed -i 's|security.debian.org|archive.debian.org/|g' /etc/apt/sources.list && \
-    sed -i '/stretch-updates/d' /etc/apt/sources.list && \
-    apt-get -o Acquire::Check-Valid-Until=false update
+# 1. Встановлюємо інструменти.
+# Цього разу без зайвих бібліотек (libgifsicle), які викликали помилки.
+# Тільки те, що треба для node-sass.
+RUN apt-get update && apt-get install -y git python3 make g++
 
-# 2. Системні бібліотеки (щоб не падали картинки і Sass)
-RUN apt-get install -y git python make g++ \
-    libpng-dev libjpeg-dev nasm autoconf libtool automake
-
-# 3. Git config
+# 2. Налаштування Git
 RUN git config --global url."https://".insteadOf git://
 
-# 4. Глобальні інструменти
+# 3. Глобальні інструменти
 RUN npm install -g gulp-cli bower
 
-# 5. Копіюємо конфіги
+# 4. Копіюємо конфіги
 COPY package*.json bower.json* .bowerrc* ./
 
-# 6. Видаляємо сміття
-RUN rm -f package-lock.json
+# 5. === ПАТЧ ДЛЯ GULP 3 НА NODE 14 ===
+# Gulp 3 не любить Node 14. Ми його "обманюємо", створюючи цей файл.
+# Це вирішує проблему "ReferenceError: primordials is not defined".
+RUN echo '{ "dependencies": { "graceful-fs": { "version": "4.2.11" } } }' > npm-shrinkwrap.json
 
-# 7. Встановлюємо залежності (без скриптів)
+# 6. Встановлюємо залежності
 RUN npm install --unsafe-perm --ignore-scripts
 
-# 8. SASS FIX (Ставимо робочу версію)
+# 7. SASS FIX
+# Ставимо версію, яка сумісна з Node 14
 RUN npm uninstall gulp-sass node-sass --unsafe-perm && \
     npm install node-sass@4.14.1 gulp-sass@4.0.2 --save-dev --unsafe-perm
 
-# 9. Ребілд
+# 8. Ребілд (критично для Node 14)
 RUN npm rebuild --unsafe-perm
 
-# 10. Gulp 3 Fix
-RUN npm install graceful-fs@4 --save-dev --save-exact
-
-# 11. Bower Fix
+# 9. Bower Fix
 RUN sed -i 's/"dependencies": {/"resolutions": { "angular": "1.7.5" }, "dependencies": {/' bower.json
 
-# 12. Bower Install
+# 10. Bower Install
 RUN bower install --allow-root --force
 
-# 13. Копіюємо весь код
+# 11. Копіюємо весь код
 COPY . .
 
 # =================================================================
-# 14. === ПОВНЕ СПРОЩЕННЯ GULP (NO CRASH MODE) ===
-# Ми перезаписуємо 3 файли. Ми прибираємо ВСЕ, що може викликати збій.
-# Тільки копіювання, компіляція Sass і склеювання. Ніякої магії.
+# 12. === СПРОЩЕННЯ ФАЙЛІВ ЗБІРКИ ===
+# Ми перезаписуємо файли Gulp "безпечними" версіями.
+# Це прибирає Uglify, CSSO і сортування, які викликають збої.
 # =================================================================
 
-# --- 1. gulp/styles.js (Тільки Sass, без sourcemaps) ---
+# --- 1. gulp/styles.js (Sass без наворотів) ---
 RUN cat <<'EOF' > gulp/styles.js
 'use strict';
 var gulp = require('gulp');
@@ -88,7 +84,7 @@ gulp.task('styles', function () {
   ])
     .pipe(indexFilter)
     .pipe($.inject(injectFiles, injectOptions))
-    .pipe($.sass(sassOptions)) 
+    .pipe($.sass(sassOptions))
     .on('error', function handleError(err) {
       console.error(err.toString());
       this.emit('end');
@@ -97,7 +93,7 @@ gulp.task('styles', function () {
 });
 EOF
 
-# --- 2. gulp/inject.js (Без сортування Angular) ---
+# --- 2. gulp/inject.js (Без сортування) ---
 RUN cat <<'EOF' > gulp/inject.js
 'use strict';
 var gulp = require('gulp');
@@ -111,7 +107,6 @@ gulp.task('inject', ['styles'], function () {
     '!' + paths.tmp + '/serve/app/vendor.css'
   ], { read: false });
 
-  // УВАГА: Прибрано $.angularFilesort(). Це головна причина падіння.
   var injectScripts = gulp.src([
     paths.src + '/{app,components}/**/*.js',
     '!' + paths.src + '/{app,components}/**/*.spec.js',
@@ -136,7 +131,7 @@ gulp.task('inject', ['styles'], function () {
 });
 EOF
 
-# --- 3. gulp/build.js (Без мініфікації та ревізій) ---
+# --- 3. gulp/build.js (Тільки склеювання) ---
 RUN cat <<'EOF' > gulp/build.js
 'use strict';
 var gulp = require('gulp');
@@ -170,7 +165,6 @@ gulp.task('html', ['inject', 'partials'], function () {
   return gulp.src(paths.tmp + '/serve/*.html')
     .pipe($.inject(partialsInjectFile, partialsInjectOptions))
     .pipe(assets = $.useref.assets())
-    // Тут ми просто склеюємо файли (useref), але НЕ стискаємо (без uglify/csso)
     .pipe(assets.restore())
     .pipe($.useref())
     .pipe(gulp.dest(paths.dist + '/'))
@@ -201,7 +195,7 @@ gulp.task('clean', function (done) {
 gulp.task('build', ['html', 'images', 'fonts', 'misc']);
 EOF
 
-# 15. Запускаємо збірку
+# 13. Запускаємо збірку
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN gulp build --verbose
 
