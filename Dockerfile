@@ -9,40 +9,45 @@ RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
     sed -i '/stretch-updates/d' /etc/apt/sources.list && \
     apt-get -o Acquire::Check-Valid-Until=false update
 
-# 2. Системні інструменти
+# 2. Системні інструменти (потрібні для збірки Sass)
 RUN apt-get install -y git python make g++
 
-# 3. Фікс протоколу Git
+# 3. Налаштування Git
 RUN git config --global url."https://".insteadOf git://
 
 # 4. Глобальні інструменти
 RUN npm install -g gulp-cli bower
 
-# 5. Копіюємо конфіги
+# 5. Копіюємо тільки файли залежностей
 COPY package*.json bower.json* .bowerrc* ./
 
-# 6. Видаляємо package-lock.json
+# 6. Видаляємо package-lock.json (він часто створює проблеми в старих проектах)
 RUN rm -f package-lock.json
 
-# 7. Встановлюємо npm-залежності без скриптів
+# 7. Встановлюємо залежності, ігноруючи скрипти (щоб не запускався bower завчасно)
 RUN npm install --unsafe-perm --ignore-scripts
 
-# 8. Дозбируємо node-sass та Gulp fixes
-RUN npm rebuild node-sass && \
-    npm install graceful-fs@4 --save-dev --save-exact
+# 8. === ГОЛОВНИЙ ФІКС ===
+# Ми примусово встановлюємо node-sass версії 4.14.1.
+# Це єдина версія, яка стабільно працює на Node 10 і не "падає" мовчки.
+RUN npm install node-sass@4.14.1 --save-dev --unsafe-perm
 
-# ===================================================
-# 9. === ФІКС КОНФЛІКТУ BOWER (Resolutions) ===
-# Ми "хитрощами" вписуємо блок resolutions у bower.json.
-# Це каже Bower-у: "Не питай мене, просто бери Angular 1.8.3"
-# ===================================================
+# 9. Перезбираємо node-sass під Linux середовище
+RUN npm rebuild node-sass
+
+# 10. Лікуємо Gulp 3 (graceful-fs)
+RUN npm install graceful-fs@4 --save-dev --save-exact
+
+# 11. Копіюємо ВЕСЬ проект (Тільки зараз, щоб не перезаписати node_modules)
+COPY . .
+
+# 12. Фікс конфлікту версій для Bower (Angular 1.8.3)
 RUN sed -i 's/"dependencies": {/"resolutions": { "angular": "1.8.3" }, "dependencies": {/' bower.json
 
-# 10. Встановлюємо Bower (тепер він не буде питати про версію)
+# 13. Запускаємо Bower (тепер, коли всі файли на місці)
 RUN bower install --allow-root --force
 
-# 11. Копіюємо код та збираємо
-COPY . .
+# 14. Збірка
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN gulp build
 
