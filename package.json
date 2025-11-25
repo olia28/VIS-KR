@@ -11,7 +11,6 @@
     "gulp-angular-templatecache": "2.2.7",
     "gulp-autoprefixer": "6.0.0",
     "gulp-consolidate": "0.2.0",
-    "gulp-csso": "3.0.1",
     "gulp-filter": "5.1.0",
     "gulp-flatten": "0.4.0",
     "gulp-gh-pages": "0.5.4",
@@ -26,9 +25,7 @@
     "gulp-replace": "1.0.0",
     "gulp-rev": "8.1.1",
     "gulp-rev-replace": "0.4.4",
-    "gulp-sass": "3.0.0",
     "gulp-size": "3.0.0",
-    "gulp-uglify": "3.0.2",
     "gulp-useref": "3.1.6",
     "http-proxy": "1.17.0",
     "jasmine-core": "3.2.1",
@@ -40,14 +37,20 @@
     "protractor": "5.4.4",
     "require-dir": "1.1.0",
     "uglify-save-license": "0.4.1",
-    "wiredep": "4.0.0"
+    "wiredep": "4.0.0",
+    "gulp-sass": "^4.1.0",
+    "sass": "^1.32.13",
+    "graceful-fs": "^4.2.11"
   },
   "engines": {
-    "node": ">=6.5",
-    "npm": ">=3.10"
+    "node": ">=10"
   },
   "scripts": {
     "init": "npm install",
-    "install": "bower install"
+    "install": "echo 'Skipping bower install in npm script'"
+  },
+  "resolutions": {
+    "angular": "1.7.5",
+    "graceful-fs": "4.2.11"
   }
 }
