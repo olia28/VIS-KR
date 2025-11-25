@@ -48,14 +48,13 @@ RUN bower install --allow-root --force
 COPY . .
 
 # =================================================================
-# 14. === ПОВНА ЗАМІНА ФАЙЛІВ ЗБІРКИ (TOTAL OVERWRITE) ===
-# Ми створюємо "безпечні" версії файлів build.js та inject.js.
-# В них ВИДАЛЕНІ: uglify, csso, ngAnnotate, angularFilesort, rev.
-# Це гарантує, що збірка не впаде через брак пам'яті чи помилки парсингу.
+# 14. === ПЕРЕЗАПИС ФАЙЛІВ ЗБІРКИ (FIXED SYNTAX) ===
+# УВАГА: Ми використовуємо 'EOF' (в лапках), щоб зберегти символи $
+# Це виправить помилку синтаксису, через яку Gulp падав.
 # =================================================================
 
 # --- Перезаписуємо gulp/inject.js ---
-RUN cat <<EOF > gulp/inject.js
+RUN cat <<'EOF' > gulp/inject.js
 'use strict';
 var gulp = require('gulp');
 var paths = gulp.paths;
@@ -73,7 +72,6 @@ gulp.task('inject', ['styles'], function () {
     '!' + paths.src + '/{app,components}/**/*.spec.js',
     '!' + paths.src + '/{app,components}/**/*.mock.js'
   ]); 
-  // ПРИБРАНО: .pipe($.angularFilesort()) - воно падало
 
   var injectOptions = {
     ignorePath: [paths.src, paths.tmp + '/serve'],
@@ -94,7 +92,7 @@ gulp.task('inject', ['styles'], function () {
 EOF
 
 # --- Перезаписуємо gulp/build.js ---
-RUN cat <<EOF > gulp/build.js
+RUN cat <<'EOF' > gulp/build.js
 'use strict';
 var gulp = require('gulp');
 var paths = gulp.paths;
@@ -127,7 +125,6 @@ gulp.task('html', ['inject', 'partials'], function () {
   return gulp.src(paths.tmp + '/serve/*.html')
     .pipe($.inject(partialsInjectFile, partialsInjectOptions))
     .pipe(assets = $.useref.assets())
-    // ТУТ БУЛИ: rev, ngAnnotate, uglify, csso - МИ ЇХ ВИДАЛИЛИ
     .pipe(assets.restore())
     .pipe($.useref())
     .pipe(gulp.dest(paths.dist + '/'))
